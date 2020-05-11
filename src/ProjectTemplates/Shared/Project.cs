@@ -157,7 +157,6 @@ namespace Templates.Test.Helpers
         {
             var environment = new Dictionary<string, string>
             {
-                ["ASPNETCORE_URLS"] = _urls,
                 ["ASPNETCORE_ENVIRONMENT"] = "Development",
                 ["ASPNETCORE_Logging__Console__LogLevel__Default"] = "Debug",
                 ["ASPNETCORE_Logging__Console__LogLevel__System"] = "Debug",
@@ -165,8 +164,28 @@ namespace Templates.Test.Helpers
                 ["ASPNETCORE_Logging__Console__IncludeScopes"] = "true",
             };
 
+            var launchSettingsJson = Path.Combine(TemplateOutputDir, "Properties", "launchSettings.json");
+            if (!File.Exists(launchSettingsJson))
+            {
+                throw new FileNotFoundException("Unable to find launchSettings.json");
+            }
+
+            // During dotnet-run, the launch urls specified in the app's launchSettings.json have higher precedence
+            // than ambient environment variables. We have to edit this file to allow the application to pick arbitrary urls
+            var original = File.ReadAllText(launchSettingsJson);
+            var updated = original.Replace(
+                "\"applicationUrl\": \"https://localhost:5001;http://localhost:5000\"",
+                $"\"applicationUrl\": \"{_urls}\"");
+
+            if (updated == original)
+            {
+                throw new InvalidOperationException("Unable to update url in launchSettings.json");
+            }
+
+            File.WriteAllText(launchSettingsJson, updated);
+
             var projectDll = Path.Combine(TemplateBuildDir, $"{ProjectName}.dll");
-            return new AspNetProcess(Output, TemplateOutputDir, projectDll, environment, hasListeningUri: hasListeningUri, logger: logger);
+            return new AspNetProcess(Output, TemplateOutputDir, projectDll, environment, published: false, hasListeningUri: hasListeningUri, logger: logger);
         }
 
         internal AspNetProcess StartPublishedProjectAsync(bool hasListeningUri = true)
@@ -181,7 +200,7 @@ namespace Templates.Test.Helpers
             };
 
             var projectDll = $"{ProjectName}.dll";
-            return new AspNetProcess(Output, TemplatePublishDir, projectDll, environment, hasListeningUri: hasListeningUri);
+            return new AspNetProcess(Output, TemplatePublishDir, projectDll, environment, published: true, hasListeningUri: hasListeningUri);
         }
 
         internal async Task<ProcessResult> RunDotNetEfCreateMigrationAsync(string migrationName)
